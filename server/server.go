@@ -1,20 +1,40 @@
 package server
 
-import "github.com/linqiurong2021/go-postgis/libs"
+import (
+	"fmt"
+	"net/http"
+	"os"
 
-// NewServer NewServer
-func NewServer(postgres *libs.Postgre) *RESTful {
-	return &RESTful{
-		postgres: postgres,
-	}
-}
+	"github.com/linqiurong2021/go-postgis/api"
+	"github.com/linqiurong2021/go-postgis/logic"
+)
 
 // RESTful RESTful
 type RESTful struct {
-	postgres *libs.Postgre
+	logic *logic.Logic
+}
+
+// NewServer NewServer
+func NewServer() *RESTful {
+	return &RESTful{}
 }
 
 // Run Run
 func (r *RESTful) Run() {
+	// api => logic => service =>
+	gisAPI := api.NewGisTool()
 	//
+	http.HandleFunc("/gis/getCenter", gisAPI.Centroid)
+
+	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(rw, "Hello World!!!")
+	})
+
+	addr := ":8080"
+	fmt.Printf("\n server start at %s \n", addr)
+	err := http.ListenAndServe(addr, nil)
+	if err != nil {
+		fmt.Println("err = ", err)
+		os.Exit(1)
+	}
 }

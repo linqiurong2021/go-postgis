@@ -72,6 +72,33 @@ func (r *PostGis) getReturnType(returnType string, SQL string) string {
 	return funcStr
 }
 
+// getCoordinate getCoordinate
+func (r *PostGis) stTransform(geometry interface{}, coordinateType string, from int64, to int64) (tmpStr string) {
+	//
+	if coordinateType == consts.Geographic {
+		tmpStr = fmt.Sprintf("st_transform(ST_SetSRID(ST_AsText('%s'),%d), %d)", geometry, from, to)
+	} else {
+		tmpStr = fmt.Sprintf("ST_AsText('%s')", geometry)
+	}
+
+	return tmpStr
+}
+
+// getGeomCoord getGeomCoord
+func (r *PostGis) getGeomCoord(geometry interface{}, coordinateType string, from int64, to int64) interface{} {
+	//
+	if from == 0 {
+		from = 4326 // 84坐标
+	}
+	if to == 0 {
+		to = 4527 // 2000坐标
+	}
+	// 函数字符串
+	funcStr := r.stTransform(geometry, coordinateType, from, to)
+	// 判断
+	return funcStr
+}
+
 // Centroid Centroid
 func (r *PostGis) Centroid(geometry interface{}, returnType string) (result interface{}, err error) {
 	// 中心坐标点
@@ -85,137 +112,169 @@ func (r *PostGis) Centroid(geometry interface{}, returnType string) (result inte
 	return
 }
 
-// Area Area
-func (r *PostGis) Area(geometry interface{}) (result interface{}, err error) {
-	//
-	SQL := fmt.Sprintf("SELECT ST_Area();", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+// Area 面积(单位:平方米)
+func (r *PostGis) Area(geometry interface{}, coordinateType string, from int64, to int64) (result interface{}, err error) {
+	// 判断是否是地理坐标系 还是 投影坐标系统
+	coordinateType = strings.ToLower(coordinateType)
+	// 如果是地理坐标系统需要转换成投影坐标系统
+	tmpStr := r.getGeomCoord(geometry, coordinateType, from, to)
+
+	SQL := fmt.Sprintf("SELECT ST_Area(%s);", tmpStr)
+
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	return
 }
 
-// Length Length
-func (r *PostGis) Length(geometry interface{}) (result interface{}, err error) {
+// Length 长度(单位:米)
+func (r *PostGis) Length(geometry interface{}, coordinateType string, from int64, to int64) (result interface{}, err error) {
 	//
+	coordinateType = strings.ToLower(coordinateType)
+	// 如果是地理坐标系统需要转换成投影坐标系统
+	tmpStr := r.getGeomCoord(geometry, coordinateType, from, to)
+	SQL := fmt.Sprintf("SELECT ST_Length(%s);", tmpStr)
 
-	SQL := fmt.Sprintf("SELECT ST_Length();", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
 // PointOnSurface PointOnSurface
-func (r *PostGis) PointOnSurface(geometry interface{}) (result interface{}, err error) {
+func (r *PostGis) PointOnSurface(geometry interface{}, returnType string) (result interface{}, err error) {
 	//
+	// 获取返回格式
+	tmpStr := fmt.Sprintf("ST_PointOnSurface('%s')", geometry)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	// fmt.Printf("SQL:%s", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
+	return
+}
 
-	SQL := fmt.Sprintf("SELECT ST_PointOnSurface(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+// Boundary 边界
+func (r *PostGis) Boundary(geometry interface{}, returnType string) (result interface{}, err error) {
+	//
+	tmpStr := fmt.Sprintf("ST_Boundary('%s')", geometry)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	// fmt.Printf("SQL:%s", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// Boundary Boundary
-func (r *PostGis) Boundary(geometry interface{}) (result interface{}, err error) {
+// Buffer 缓冲
+func (r *PostGis) Buffer(geometry interface{}, returnType string, distance float64) (result interface{}, err error) {
 	//
-
-	SQL := fmt.Sprintf("SELECT ST_Boundary(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	tmpStr := fmt.Sprintf("ST_Buffer('%s',%f)", geometry, distance)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// Buffer Buffer
-func (r *PostGis) Buffer(geometry interface{}) (result interface{}, err error) {
+// ConvexHull 返回几何值的凸包
+func (r *PostGis) ConvexHull(geometry interface{}, returnType string) (result interface{}, err error) {
 	//
-
-	SQL := fmt.Sprintf("SELECT ST_Buffer(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	tmpStr := fmt.Sprintf("ST_ConvexHull('%s')", geometry)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// ConvexHull ConvexHull
-func (r *PostGis) ConvexHull(geometry interface{}) (result interface{}, err error) {
+// Intersection 交点
+func (r *PostGis) Intersection(geometry interface{}, geometry2 interface{}, returnType string) (result interface{}, err error) {
 	//
-
-	SQL := fmt.Sprintf("SELECT ST_ConvexHull(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	tmpStr := fmt.Sprintf("ST_Intersection('%s','%s')", geometry, geometry2)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// Intersection Intersection
-func (r *PostGis) Intersection(geometry interface{}) (result interface{}, err error) {
+// ShiftLongitude 读取几何图形中每个要素的每个组件中的每个点/顶点，如果经度坐标<0，则将其添加360。结果将是要在180中心图中绘制的数据的0-360版本
+func (r *PostGis) ShiftLongitude(geometry interface{}, returnType string) (result interface{}, err error) {
 	//
-
-	SQL := fmt.Sprintf("SELECT ST_Intersection(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	tmpStr := fmt.Sprintf("ST_ShiftLongitude('%s')", geometry)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// ShiftLongitude ShiftLongitude
-func (r *PostGis) ShiftLongitude(geometry interface{}) (result interface{}, err error) {
+// SymDifference 返回表示A和B不相交的部分的几何。之所以称为对称差异，
+// 是因为ST_SymDifference（A，B）= ST_SymDifference（B，A）。可以将其视为ST_Union（geomA，geomB）-ST_Intersection（A，B）。
+func (r *PostGis) SymDifference(geometry interface{}, geometry2 interface{}, returnType string) (result interface{}, err error) {
 	//
+	tmpStr := fmt.Sprintf("ST_SymDifference('%s','%s')", geometry, geometry2)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
 
-	SQL := fmt.Sprintf("SELECT ST_Shift_Longitude(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// SymDifference SymDifference
-func (r *PostGis) SymDifference(geometry interface{}) (result interface{}, err error) {
+// Difference
+// 返回一个表示不与几何B相交的几何A的那部分的几何。可以将其视为GeometryA-ST_Intersection（A，B）。如果A完全包含在B中，则返回一个空的几何集合。
+func (r *PostGis) Difference(geometry interface{}, geometry2 interface{}, returnType string) (result interface{}, err error) {
 	//
-
-	SQL := fmt.Sprintf("SELECT ST_SymDifference(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	tmpStr := fmt.Sprintf("ST_Difference('%s','%s')", geometry, geometry2)
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// Difference Difference
-func (r *PostGis) Difference(geometry interface{}) (result interface{}, err error) {
+// Union 合并
+// http://postgis.net/docs/manual-3.0/ST_Union.html
+func (r *PostGis) Union(geometry interface{}, geometry2 interface{}, returnType string) (result interface{}, err error) {
 	//
+	tmpStr := fmt.Sprintf("ST_Union(ST_AsText('%s'),ST_AsText('%s'))", geometry, geometry2) // 需要AsText否则会有问题
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
 
-	SQL := fmt.Sprintf("SELECT ST_Difference(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
+	return
+}
+
+// MemUnion 合并
+func (r *PostGis) MemUnion(geometry interface{}, returnType string) (result interface{}, err error) {
+	//
+	tmpStr := fmt.Sprintf("ST_MemUnion('%s')", geometry) // 需要AsText否则会有问题
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
 
-// Union Union
-func (r *PostGis) Union(geometry interface{}) (result interface{}, err error) {
+// Distance 距离
+func (r *PostGis) Distance(geometry interface{}, geometry2 interface{}, returnType string) (result interface{}, err error) {
 	//
-
-	SQL := fmt.Sprintf("SELECT ST_Union(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
-
-	return
-}
-
-// MemUnion MemUnion
-func (r *PostGis) MemUnion(geometry interface{}) (result interface{}, err error) {
-	//
-	SQL := fmt.Sprintf("SELECT ST_MemUnion(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
-
-	return
-}
-
-// Distance Distance
-func (r *PostGis) Distance(geometry interface{}, geometry2 interface{}) (result interface{}, err error) {
-	//
-	SQL := fmt.Sprintf("SELECT ST_Distance(%s, %s);", geometry, geometry2)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
-
+	tmpStr := fmt.Sprintf("ST_Distance('%s','%s')", geometry, geometry2) // 需要AsText否则会有问题
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	return
 }
 
 // DWithin DWithin
-func (r *PostGis) DWithin(geometry interface{}, geometry2 interface{}, distance float64) (result interface{}, err error) {
+// 如果几何之间的距离在指定范围之内，则返回true。
+// 对于几何：距离以几何的空间参照系定义的单位指定。为了使此功能有意义，源几何必须都具有相同的坐标投影，并具有相同的SRID。
+// 对于地理单位，单位为米，默认将测量值设置为use_spheroid= true，以便进行更快速的检查；如果设置use_spheroid为false，则沿球面进行测量。
+func (r *PostGis) DWithin(geometry interface{}, geometry2 interface{}, returnType string, distance float64) (result interface{}, err error) {
 	//
-	SQL := fmt.Sprintf("SELECT ST_DWithin(%s, %s, %b);", geometry, geometry2, distance)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	tmpStr := fmt.Sprintf("ST_DWithin('%s','%s','%f')", geometry, geometry2, distance) // 需要AsText否则会有问题
+	SQL := r.getReturnType(returnType, tmpStr)
+	SQL = fmt.Sprintf("SELECT %s;", SQL)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 
 	return
 }
@@ -244,7 +303,7 @@ func (r *PostGis) Disjoint(geometry interface{}, geometry2 interface{}) (disjoin
 	return
 }
 
-// Intersects Intersects
+// Intersects 相交
 func (r *PostGis) Intersects(geometry interface{}, geometry2 interface{}) (intersects bool, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_Intersects(%s, %s);", geometry, geometry2)
@@ -356,7 +415,7 @@ func (r *PostGis) Relate(geometry interface{}, geometry2 interface{}) (relate bo
 func (r *PostGis) AsText(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_AsText(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return false, err
@@ -368,7 +427,7 @@ func (r *PostGis) AsText(geometry interface{}) (result interface{}, err error) {
 func (r *PostGis) AsBinary(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_AsBinary(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return false, err
@@ -380,7 +439,7 @@ func (r *PostGis) AsBinary(geometry interface{}) (result interface{}, err error)
 func (r *PostGis) SRID(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_SRID(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return false, err
@@ -392,7 +451,7 @@ func (r *PostGis) SRID(geometry interface{}) (result interface{}, err error) {
 func (r *PostGis) Dimension(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_Dimension(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return false, err
@@ -404,7 +463,7 @@ func (r *PostGis) Dimension(geometry interface{}) (result interface{}, err error
 func (r *PostGis) Envelope(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_Envelope(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return false, err
@@ -548,7 +607,7 @@ func (r *PostGis) NumInteriorRing(geometry interface{}) (num int64, err error) {
 func (r *PostGis) InteriorRingN(geometry interface{}, index int64) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_InteriorRingN(%s, %d);", geometry, index)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return -1, err
@@ -560,7 +619,7 @@ func (r *PostGis) InteriorRingN(geometry interface{}, index int64) (result inter
 func (r *PostGis) EndPoint(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_EndPoint(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return -1, err
@@ -572,7 +631,7 @@ func (r *PostGis) EndPoint(geometry interface{}) (result interface{}, err error)
 func (r *PostGis) StartPoint(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_EndPoint(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return -1, err
@@ -584,7 +643,7 @@ func (r *PostGis) StartPoint(geometry interface{}) (result interface{}, err erro
 func (r *PostGis) X(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_X(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return -1, err
@@ -596,7 +655,7 @@ func (r *PostGis) X(geometry interface{}) (result interface{}, err error) {
 func (r *PostGis) Y(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_EndPoint(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return -1, err
@@ -608,7 +667,7 @@ func (r *PostGis) Y(geometry interface{}) (result interface{}, err error) {
 func (r *PostGis) M(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_EndPoint(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return -1, err
@@ -620,7 +679,7 @@ func (r *PostGis) M(geometry interface{}) (result interface{}, err error) {
 func (r *PostGis) Z(geometry interface{}) (result interface{}, err error) {
 	//
 	SQL := fmt.Sprintf("SELECT ST_EndPoint(%s);", geometry)
-	err = r.Pool.QueryRow(context.Background(), SQL).Scan(result)
+	err = r.Pool.QueryRow(context.Background(), SQL).Scan(&result)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
 		return -1, err

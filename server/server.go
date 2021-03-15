@@ -23,8 +23,30 @@ func NewServer() *RESTful {
 func (r *RESTful) Run() {
 	// api => logic => service =>
 	gisAPI := api.NewGisTool()
-	//
+
 	http.HandleFunc("/gis/getCenter", gisAPI.Centroid)
+	//
+	http.HandleFunc("/gis/getArea", gisAPI.GetArea)
+	//
+	http.HandleFunc("/gis/getLength", gisAPI.GetLength)
+	//
+	http.HandleFunc("/gis/pointOnSurface", gisAPI.PointOnSurface)
+	//
+	http.HandleFunc("/gis/boundary", gisAPI.Boundary)
+	//
+	http.HandleFunc("/gis/buffer", gisAPI.Buffer)
+	// Intersection
+	http.HandleFunc("/gis/intersection", gisAPI.Intersection)
+	// ShiftLongitude
+	http.HandleFunc("/gis/shiftLongitude", gisAPI.ShiftLongitude)
+	// SymDifference
+	http.HandleFunc("/gis/symDifference", gisAPI.SymDifference)
+	// Difference
+	http.HandleFunc("/gis/difference", gisAPI.Difference)
+	// Union
+	http.HandleFunc("/gis/union", gisAPI.Union)
+	// MemUnion
+	http.HandleFunc("/gis/memUnion", gisAPI.MemUnion)
 
 	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(rw, "Hello World!!!")
